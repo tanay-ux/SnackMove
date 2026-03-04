@@ -1,0 +1,87 @@
+import { create } from 'zustand';
+import { getSettings, saveSettings } from '../db';
+import type { UserSettings } from '../types';
+import { DEFAULT_SETTINGS } from '../types';
+
+interface AppState {
+  onboardingComplete: boolean | null;
+  settings: UserSettings | null;
+  settingsId: number | null;
+  hydrated: boolean;
+  setOnboardingComplete: (v: boolean) => void;
+  setSettings: (s: UserSettings | null, id?: number | null) => void;
+  loadSettings: () => Promise<void>;
+  saveSettingsAsync: (updates: Partial<UserSettings>) => Promise<void>;
+  completeOnboarding: (s: Partial<UserSettings>) => Promise<void>;
+  hydrate: () => Promise<void>;
+  resetData: () => Promise<void>;
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
+  onboardingComplete: null,
+  settings: null,
+  settingsId: null,
+  hydrated: false,
+
+  setOnboardingComplete: (v) => set({ onboardingComplete: v }),
+  setSettings: (s, id) => set({ settings: s, settingsId: id ?? null }),
+
+  loadSettings: async () => {
+    const settings = await getSettings();
+    if (settings && 'id' in settings && settings.id) {
+      set({ settings, settingsId: settings.id });
+    } else {
+      set({ settings: null, settingsId: null });
+    }
+  },
+
+  saveSettingsAsync: async (updates) => {
+    const { settings, settingsId } = get();
+    if (!settings) return;
+    const next = { ...settings, ...updates };
+    if (settingsId != null) {
+      const { updateSettings } = await import('../db');
+      await updateSettings(settingsId, updates);
+    } else {
+      const id = await saveSettings({ ...next, createdAt: Date.now() });
+      set({ settingsId: id });
+    }
+    set({ settings: next });
+  },
+
+  completeOnboarding: async (s) => {
+    const full: UserSettings = {
+      ...DEFAULT_SETTINGS,
+      ...s,
+      createdAt: Date.now(),
+    };
+    const id = await saveSettings(full);
+    set({
+      settings: full,
+      settingsId: id as number,
+      onboardingComplete: true,
+    });
+  },
+
+  hydrate: async () => {
+    const settings = await getSettings();
+    const hasSettings = settings != null && (settings.startTime != null || settings.snackStyle != null);
+    set({
+      settings: settings ?? null,
+      settingsId: settings && 'id' in settings ? (settings.id as number) : null,
+      onboardingComplete: hasSettings,
+      hydrated: true,
+    });
+  },
+
+  resetData: async () => {
+    const { db } = await import('../db');
+    await db.snackEvents.clear();
+    await db.userSettings.clear();
+    set({
+      onboardingComplete: false,
+      settings: null,
+      settingsId: null,
+    });
+  },
+}));

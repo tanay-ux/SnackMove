@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SnackMove</string>
+    <string name="title_activity_main">SnackMove</string>
+    <string name="package_name">com.snackmove.app</string>
+    <string name="custom_url_scheme">com.snackmove.app</string>
+</resources>
