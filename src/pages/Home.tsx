@@ -67,14 +67,18 @@ export default function Home() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    requestNativePermissions();
-    checkNativeLaunchIntent().then((started) => {
+    const bootstrapNativeState = async () => {
+      const granted = await requestNativePermissions();
+      console.log('[Home] initial notification permission granted:', granted);
+      const started = await checkNativeLaunchIntent();
+      console.log('[Home] launch intent snackStart:', started);
       if (started) {
         setReminderTitle('Time to move!');
         setReminderEntry('reminder');
         setShowSnooze(true);
       }
-    });
+    };
+    void bootstrapNativeState();
   }, []);
 
   const markJustLogged = () => {
@@ -105,6 +109,12 @@ export default function Home() {
     setTestCountdown(10);
 
     if (isNativePlatform()) {
+      const granted = await requestNativePermissions();
+      if (!granted) {
+        console.warn('[Test] Notification permission not granted; alarm not scheduled');
+        setTestCountdown(null);
+        return;
+      }
       const ok = await scheduleNativeAlarm(triggerAt, 'Test reminder!');
       console.log('[Test] Native alarm scheduled:', ok);
     }
@@ -126,6 +136,11 @@ export default function Home() {
 
   const fireDirectNotification = async () => {
     if (isNativePlatform()) {
+      const granted = await requestNativePermissions();
+      if (!granted) {
+        console.warn('[Test] Notification permission not granted; direct notification skipped');
+        return;
+      }
       await fireTestNotification('Test notification!');
     }
   };
@@ -161,8 +176,8 @@ export default function Home() {
   })();
 
   return (
-    <div className="min-h-dvh bg-white safe-top safe-bottom">
-      <main className="px-5 pt-6 pb-24">
+    <div className="min-h-dvh bg-white safe-top">
+      <main className="px-5 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
         <header className="mb-6">
           <h1 className="text-xl font-bold text-accent-gray">{greeting}</h1>
           <p className="text-accent-gray/80 text-sm mt-0.5">Time for a quick move.</p>

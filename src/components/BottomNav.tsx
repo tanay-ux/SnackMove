@@ -36,7 +36,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto z-50 px-4 pt-2 pb-[calc(24px+env(safe-area-inset-bottom,0))]"
+      className="fixed bottom-0 left-0 right-0 max-w-[480px] mx-auto z-50 px-4 pt-2 pb-[calc(8px+env(safe-area-inset-bottom,0px))]"
       aria-label="Main navigation"
     >
       <div className="bg-white rounded-full shadow-lg flex items-stretch overflow-hidden min-h-[56px]">

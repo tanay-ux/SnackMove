@@ -27,7 +27,3 @@ Desktop.ini
 # Logs
 *.log
 npm-debug.log*
-
-# Junction symlinks to Android_app / iOS_app
-android
-ios

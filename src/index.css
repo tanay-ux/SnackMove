@@ -13,7 +13,7 @@ html {
 body {
   @apply bg-white text-accent-gray antialiased;
   min-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  overscroll-behavior-y: none;
 }
 
 #root {
@@ -25,10 +25,6 @@ body {
 /* Safe area for notched devices */
 .safe-top {
   padding-top: env(safe-area-inset-top, 0);
-}
-
-.safe-bottom {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0) + 5rem);
 }
 
 @keyframes slide-up {

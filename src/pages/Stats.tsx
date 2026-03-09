@@ -109,8 +109,8 @@ export default function Stats() {
   const isCurrentMonth = viewYear === now.getFullYear() && viewMonth === now.getMonth() + 1;
 
   return (
-    <div className="min-h-dvh bg-white safe-top safe-bottom">
-      <main className="px-5 pt-6 pb-24">
+    <div className="min-h-dvh bg-white safe-top">
+      <main className="px-5 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
         <header className="mb-6">
           <h1 className="text-xl font-bold text-accent-gray">Stats</h1>
           <p className="text-accent-gray/80 text-sm mt-0.5">Small moves add up.</p>
