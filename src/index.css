@@ -8,10 +8,11 @@
 
 html {
   font-family: 'DM Sans', system-ui, sans-serif;
+  scroll-behavior: smooth;
 }
 
 body {
-  @apply bg-white text-accent-gray antialiased;
+  @apply bg-surface text-accent-gray antialiased;
   min-height: 100dvh;
   overscroll-behavior-y: none;
 }
@@ -20,24 +21,84 @@ body {
   min-height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
+  position: relative;
+  overflow-x: hidden;
 }
 
-/* Safe area for notched devices */
 .safe-top {
   padding-top: env(safe-area-inset-top, 0);
 }
 
-@keyframes slide-up {
-  from {
-    transform: translateY(100%);
-    opacity: 0.9;
+/* Glass morphism utility */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Shimmer loading effect */
+.shimmer-bg {
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(135deg, #6B4EAA, #E85D8C);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* Active press state for interactive elements */
+@layer utilities {
+  .press-scale {
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  to {
-    transform: translateY(0);
-    opacity: 1;
+  .press-scale:active {
+    transform: scale(0.97);
   }
 }
 
-.animate-slide-up {
-  animation: slide-up 0.25s ease-out;
+/* Overlay backdrop */
+.overlay-enter {
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Hero decorative orbs */
+.hero-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Toggle switch track */
+.toggle-track {
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* Number counter overflow */
+.counter-clip {
+  overflow: hidden;
+  display: inline-flex;
+  vertical-align: bottom;
 }

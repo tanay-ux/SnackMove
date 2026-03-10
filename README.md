@@ -34,7 +34,7 @@ Deploy the `dist/` folder to Vercel, Netlify, or any static host. The app is ins
 - **Reminders**: In-app timer + local notifications when due; snooze (5/10/15/30 min, max 3, not past window end).
 - **Stats**: Total snacks/minutes, current streak, 7-day average, calendar heatmap (tap day for details).
 - **Settings**: Time window, active days, snack style, max reminders, min spacing, duration 1–5 min, notifications toggle, reset data.
-- **Data**: All in IndexedDB (no account). UserSettings + SnackEvent; daily success = ≥3 snacks.
+- **Data**: All in IndexedDB (no account). UserSettings + SnackEvent; daily success = ≥5 snacks.
 
 ## PWA
 

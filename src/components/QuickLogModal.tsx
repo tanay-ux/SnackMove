@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useAppStore } from '../store/useAppStore';
 import { SNACK_PACKS } from '../lib/snackPacks';
 
@@ -6,6 +7,18 @@ interface QuickLogModalProps {
   onLog: () => void;
 }
 
+const backdrop = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
+  exit: { opacity: 0 },
+};
+
+const sheet = {
+  hidden: { y: '100%' },
+  visible: { y: 0, transition: { type: 'spring' as const, stiffness: 350, damping: 35 } },
+  exit: { y: '100%', transition: { type: 'spring' as const, stiffness: 400, damping: 40 } },
+};
+
 export default function QuickLogModal({ onClose, onLog }: QuickLogModalProps) {
   const settings = useAppStore((s) => s.settings);
   const style = settings?.snackStyle ?? 'energizing';
@@ -13,54 +26,67 @@ export default function QuickLogModal({ onClose, onLog }: QuickLogModalProps) {
   const pack = SNACK_PACKS[style];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 max-w-[480px] mx-auto">
-      <div
-        className="w-full bg-white rounded-t-[1.5rem] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-slide-up"
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end justify-center max-w-[480px] mx-auto"
+      variants={backdrop}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+    >
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <motion.div
+        className="w-full bg-white rounded-t-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] relative z-10"
+        variants={sheet}
         role="dialog"
         aria-modal="true"
         aria-labelledby="quick-log-title"
       >
-        <div className="flex justify-end gap-2 mb-4">
-          <button
+        <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
+
+        <div className="flex items-center justify-between mb-4">
+          <span className="bg-primary-50 text-primary text-xs font-bold px-3 py-1.5 rounded-full">
+            {duration} min
+          </span>
+          <motion.button
             type="button"
             onClick={onClose}
-            className="p-2 text-accent-gray rounded-button hover:bg-gray-100"
-            aria-label="Close"
+            className="w-8 h-8 rounded-xl bg-surface flex items-center justify-center text-accent-gray"
+            whileTap={{ scale: 0.9 }}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </button>
-        </div>
-
-        <div className="bg-accent-gray text-white rounded-button px-4 py-2 inline-block text-sm font-medium mb-4">
-          {duration} min
+          </motion.button>
         </div>
 
         <h2 id="quick-log-title" className="text-xl font-bold text-accent-gray mb-1">
           {pack.title}
         </h2>
-        <p className="text-sm text-accent-gray/80 mb-4">{pack.subtitle}</p>
+        <p className="text-sm text-accent-gray mb-4">{pack.subtitle}</p>
 
         <div className="flex flex-wrap gap-2 mb-6">
           {pack.exercises.slice(0, 4).map((ex, i) => (
-            <span
+            <motion.span
               key={i}
-              className="text-xs bg-gray-100 text-accent-gray px-2.5 py-1 rounded-button"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: i * 0.05 }}
+              className="text-xs bg-surface border border-gray-100 text-accent-gray font-medium px-3 py-1.5 rounded-full"
             >
               {ex.name}
-            </span>
+            </motion.span>
           ))}
         </div>
 
-        <button
+        <motion.button
           type="button"
           onClick={onLog}
-          className="w-full bg-primary text-white font-semibold py-3.5 rounded-button"
+          className="w-full bg-primary text-white font-bold py-3.5 rounded-xl shadow-glow-sm"
+          whileTap={{ scale: 0.97 }}
         >
           Log snack
-        </button>
-      </div>
-    </div>
+        </motion.button>
+      </motion.div>
+    </motion.div>
   );
 }

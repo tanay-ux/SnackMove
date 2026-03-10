@@ -30,6 +30,9 @@ public class AlarmReceiver extends BroadcastReceiver {
 
         createNotificationChannel(context);
         postNotification(context, title);
+
+        // Critical: schedule the next reminder natively so alarms continue even if the app isn't opened.
+        ReminderScheduler.ensureNextAlarmScheduled(context, "alarm_fired");
     }
 
     public static void postNotification(Context context, String title) {

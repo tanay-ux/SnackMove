@@ -2,6 +2,30 @@ import type { UserSettings } from '../types';
 import { getSnackEventsByDateRange } from '../db';
 
 const MS_PER_MIN = 60 * 1000;
+const DEFAULT_MIN_INTERVAL_MINUTES = 30;
+const FALLBACK_RANDOM_RANGE_MINUTES = 15;
+
+/**
+ * Computes how often reminders should trigger (in minutes).
+ * Divides the active window by max reminders; if that's too low, uses a random interval
+ * between a minimum floor and +15 minutes. The minimum floor defaults to 30 minutes,
+ * but respects the user's `minSpacingMinutes` if they set it higher.
+ */
+function getEffectiveIntervalMinutes(settings: UserSettings): number {
+  const startMins = parseTime(settings.startTime);
+  const endMins = parseTime(settings.endTime);
+  const windowMinutes = Math.max(0, endMins - startMins);
+  const intervalMinutes = Math.floor(windowMinutes / Math.max(1, settings.maxRemindersPerDay));
+
+  const minFloorMinutes = Math.max(DEFAULT_MIN_INTERVAL_MINUTES, settings.minSpacingMinutes ?? 0);
+  if (intervalMinutes < minFloorMinutes) {
+    return (
+      minFloorMinutes +
+      Math.floor(Math.random() * (FALLBACK_RANDOM_RANGE_MINUTES + 1))
+    );
+  }
+  return intervalMinutes;
+}
 
 function parseTime(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -44,7 +68,8 @@ export async function getNextReminderTime(settings: UserSettings): Promise<numbe
   if (nowTs > dayEnd) return null;
   if (events.length >= settings.maxRemindersPerDay) return null;
 
-  const spacingMs = settings.minSpacingMinutes * MS_PER_MIN;
+  const intervalMinutes = getEffectiveIntervalMinutes(settings);
+  const spacingMs = intervalMinutes * MS_PER_MIN;
   const windowMs = (endMins - startMins) * MS_PER_MIN;
 
   for (let i = 0; i < 20; i++) {

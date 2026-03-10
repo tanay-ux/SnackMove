@@ -28,7 +28,7 @@ export interface DailySummary {
   date: string; // YYYY-MM-DD
   snackCount: number;
   totalMinutes: number;
-  success: boolean; // >= 3 snacks
+  success: boolean; // >= 5 snacks
 }
 
 export const DEFAULT_SETTINGS: Omit<UserSettings, 'id' | 'createdAt'> = {
@@ -36,7 +36,7 @@ export const DEFAULT_SETTINGS: Omit<UserSettings, 'id' | 'createdAt'> = {
   endTime: '17:00',
   activeDays: [1, 2, 3, 4, 5],
   snackStyle: 'energizing',
-  maxRemindersPerDay: 6,
+  maxRemindersPerDay: 5,
   minSpacingMinutes: 60,
   snackDuration: 2,
   notificationsEnabled: true,

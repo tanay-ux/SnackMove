@@ -11,6 +11,9 @@ import android.os.Build;
 public class SnoozeReceiver extends BroadcastReceiver {
 
     private static final long SNOOZE_MS = 5 * 60 * 1000;
+    private static final String PREFS_NAME = "snack_alarm_prefs";
+    private static final String KEY_NEXT_ALARM_TIME = "next_alarm_time";
+    private static final String KEY_NEXT_ALARM_TITLE = "next_alarm_title";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -23,6 +26,13 @@ public class SnoozeReceiver extends BroadcastReceiver {
         if (title == null) title = "Time to move!";
 
         long triggerAt = System.currentTimeMillis() + SNOOZE_MS;
+
+        // Persist snooze as the next alarm so it survives reboot.
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_NEXT_ALARM_TIME, triggerAt)
+                .putString(KEY_NEXT_ALARM_TITLE, title)
+                .apply();
 
         Intent alarmIntent = new Intent(context, AlarmReceiver.class);
         alarmIntent.putExtra(AlarmReceiver.EXTRA_TITLE, title);

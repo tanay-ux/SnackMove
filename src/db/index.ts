@@ -74,7 +74,7 @@ export async function getDailySummaries(days: number): Promise<{ date: string; s
       date,
       snackCount: data.count,
       totalMinutes: data.minutes,
-      success: data.count >= 3,
+      success: data.count >= 5,
     });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));

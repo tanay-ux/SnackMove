@@ -7,16 +7,32 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.util.Log;
 
 public class BootReceiver extends BroadcastReceiver {
 
+    private static final String TAG = "SnackAlarm";
     private static final String PREFS_NAME = "snack_alarm_prefs";
     private static final String KEY_NEXT_ALARM_TIME = "next_alarm_time";
     private static final String KEY_NEXT_ALARM_TITLE = "next_alarm_title";
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (!Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
+        String action = intent != null ? intent.getAction() : null;
+        if (action == null) return;
+
+        // On boot / time change / app update, restore the persisted next alarm and also
+        // ensure we have a valid upcoming schedule based on saved settings.
+        if (
+                Intent.ACTION_BOOT_COMPLETED.equals(action) ||
+                Intent.ACTION_TIME_CHANGED.equals(action) ||
+                Intent.ACTION_TIMEZONE_CHANGED.equals(action) ||
+                Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)
+        ) {
+            Log.i(TAG, "BootReceiver onReceive action=" + action);
+        } else {
+            return;
+        }
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         long triggerAt = prefs.getLong(KEY_NEXT_ALARM_TIME, 0);
@@ -46,5 +62,8 @@ public class BootReceiver extends BroadcastReceiver {
                         pending);
             }
         }
+
+        // Extra safety: if the persisted next time is missing/expired, compute and schedule a new one.
+        ReminderScheduler.ensureNextAlarmScheduled(context, "boot_or_time_change");
     }
 }
