@@ -1,5 +1,7 @@
-import { useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Capacitor } from '@capacitor/core';
+import { useAppStore } from '../store/useAppStore';
 
 type FeedbackType = 'bug' | 'feedback';
 
@@ -26,6 +28,21 @@ export default function FeedbackModal({ onClose }: Props) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const settings = useAppStore((s) => s.settings);
+
+  const [includeDeviceInfo, setIncludeDeviceInfo] = useState(true);
+  const [includeNotificationStatus, setIncludeNotificationStatus] = useState(true);
+  const [includeReminderSettings, setIncludeReminderSettings] = useState(true);
+  const [includeRecentActivity, setIncludeRecentActivity] = useState(false);
+
+  useEffect(() => {
+    // Keep feedback flow lightweight; only show these options for bug reports.
+    if (type !== 'bug') return;
+    setIncludeDeviceInfo(true);
+    setIncludeNotificationStatus(true);
+    setIncludeReminderSettings(true);
+    setIncludeRecentActivity(false);
+  }, [type]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -40,11 +57,47 @@ export default function FeedbackModal({ onClose }: Props) {
     if (fileRef.current) fileRef.current.value = '';
   };
 
+  const diagnostics = useMemo(() => {
+    const lines: string[] = [];
+    const platform = Capacitor.getPlatform();
+
+    if (includeDeviceInfo) {
+      lines.push('## Device / App');
+      lines.push(`- platform: ${platform}`);
+      lines.push(`- userAgent: ${navigator.userAgent}`);
+      lines.push(`- time: ${new Date().toISOString()}`);
+    }
+
+    if (includeNotificationStatus) {
+      lines.push('');
+      lines.push('## Notifications');
+      lines.push(`- webNotificationPermission: ${'Notification' in window ? Notification.permission : 'unsupported'}`);
+    }
+
+    if (includeReminderSettings && settings) {
+      lines.push('');
+      lines.push('## Reminder settings');
+      lines.push(`- notificationsEnabled: ${settings.notificationsEnabled}`);
+      lines.push(`- reminderFrequencyMinutes: ${settings.reminderFrequencyMinutes}`);
+      lines.push(`- window: ${settings.startTime}–${settings.endTime}`);
+      lines.push(`- activeDays: ${settings.activeDays.join(',')}`);
+    }
+
+    if (includeRecentActivity) {
+      lines.push('');
+      lines.push('## Recent activity');
+      lines.push('- (optional) Include any screenshots or steps to reproduce for best results.');
+    }
+
+    return lines.join('\n').trim();
+  }, [includeDeviceInfo, includeNotificationStatus, includeReminderSettings, includeRecentActivity, settings]);
+
   const handleSubmit = () => {
     if (!message.trim()) return;
     setSending(true);
     const label = type === 'bug' ? 'Bug Report' : 'Feedback';
-    const body = `[${label}]\n\n${message.trim()}${imagePreview ? '\n\n(Screenshot attached — if your email client did not include it, please attach manually)' : ''}`;
+    const selectedDiagnostics = type === 'bug' && diagnostics ? `\n\n---\n\n${diagnostics}` : '';
+    const body = `[${label}]\n\n${message.trim()}${imagePreview ? '\n\n(Screenshot attached — if your email client did not include it, please attach manually)' : ''}${selectedDiagnostics}`;
     const mailto = `mailto:photoplash.biz@gmail.com?subject=${encodeURIComponent('SnackMove Feedback/Report')}&body=${encodeURIComponent(body)}`;
     window.open(mailto, '_blank');
     setTimeout(() => { setSending(false); setSent(true); setTimeout(() => onClose(), 1200); }, 600);
@@ -90,7 +143,7 @@ export default function FeedbackModal({ onClose }: Props) {
           ) : (
             <motion.div key="form" initial={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-accent-gray">Give feedback</h2>
+                <h2 className="text-lg font-bold text-accent-gray">Feedback/bug report</h2>
                 <motion.button
                   type="button"
                   onClick={onClose}
@@ -138,6 +191,40 @@ export default function FeedbackModal({ onClose }: Props) {
                 className="w-full rounded-xl border border-gray-200 bg-surface px-3.5 py-3 text-sm text-accent-gray placeholder:text-accent-gray/60 resize-none focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary-100 mb-3 transition-all"
               />
 
+              {type === 'bug' && (
+                <div className="mb-4 rounded-2xl border border-gray-100 bg-surface p-3.5">
+                  <p className="text-xs font-semibold text-accent-gray mb-2">Include with bug report</p>
+                  <label className="flex items-start gap-3 py-1.5">
+                    <input type="checkbox" className="mt-0.5" checked={includeDeviceInfo} onChange={(e) => setIncludeDeviceInfo(e.target.checked)} />
+                    <span className="text-sm text-accent-gray">
+                      <span className="font-semibold">Device & app info</span>
+                      <span className="block text-xs text-accent-gray/80">Helps us reproduce (platform + time).</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 py-1.5">
+                    <input type="checkbox" className="mt-0.5" checked={includeNotificationStatus} onChange={(e) => setIncludeNotificationStatus(e.target.checked)} />
+                    <span className="text-sm text-accent-gray">
+                      <span className="font-semibold">Notification status</span>
+                      <span className="block text-xs text-accent-gray/80">Permission state can explain missing alerts.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 py-1.5">
+                    <input type="checkbox" className="mt-0.5" checked={includeReminderSettings} onChange={(e) => setIncludeReminderSettings(e.target.checked)} />
+                    <span className="text-sm text-accent-gray">
+                      <span className="font-semibold">Reminder settings</span>
+                      <span className="block text-xs text-accent-gray/80">Window + frequency + active days.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-3 py-1.5">
+                    <input type="checkbox" className="mt-0.5" checked={includeRecentActivity} onChange={(e) => setIncludeRecentActivity(e.target.checked)} />
+                    <span className="text-sm text-accent-gray">
+                      <span className="font-semibold">Extra context</span>
+                      <span className="block text-xs text-accent-gray/80">Add steps + what you expected.</span>
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <div className="mb-4">
                 {imagePreview ? (
                   <div className="relative inline-block">
@@ -173,7 +260,7 @@ export default function FeedbackModal({ onClose }: Props) {
                 className="w-full bg-primary text-white font-bold py-3 rounded-xl disabled:opacity-50 shadow-glow-sm"
                 whileTap={{ scale: 0.97 }}
               >
-                {sending ? 'Opening email...' : 'Submit'}
+                {sending ? 'Opening email...' : 'Send email'}
               </motion.button>
 
               <p className="text-[11px] text-accent-gray text-center mt-3">

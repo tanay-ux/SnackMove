@@ -8,10 +8,16 @@ import { useAppStore } from '../store/useAppStore';
 import { useTodayStore } from '../store/useTodayStore';
 import { useReminder } from '../hooks/useReminder';
 import { getBenefitsForToday } from '../lib/benefits';
-import { getNextReminderTime, isWithinWindow, minutesUntil } from '../lib/reminderEngine';
+import { getNextReminderTime, isWithinWindow } from '../lib/reminderEngine';
 import { getCurrentStreak } from '../db';
 import { SNACK_PACKS, getExerciseSteps, type ExerciseStep } from '../lib/snackPacks';
-import { checkNativeLaunchIntent, requestNativePermissions, isNativePlatform, scheduleNativeAlarm, fireTestNotification } from '../lib/nativeAlarm';
+import { requestNotificationPermission } from '../lib/push';
+import {
+  checkNativeLaunchIntent,
+  checkNotificationPermissionGranted,
+  isNativePlatform,
+  requestNativePermissions,
+} from '../lib/nativeAlarm';
 import RatePrompt from '../components/RatePrompt';
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -39,7 +45,6 @@ const fadeUp = {
 export default function Home() {
   const settings = useAppStore((s) => s.settings);
   const { events, loadToday, logSnack } = useTodayStore();
-  const [nextReminder, setNextReminder] = useState<number | null>(null);
   const [withinWindow, setWithinWindow] = useState(false);
   const [streak, setStreak] = useState(0);
   const [showQuickLog, setShowQuickLog] = useState(false);
@@ -51,8 +56,8 @@ export default function Home() {
   const justLoggedTimeout = useRef<number | null>(null);
   const [nextSnackSteps, setNextSnackSteps] = useState<ExerciseStep[]>([]);
   const [openSnackKey, setOpenSnackKey] = useState<string | null>(null);
-  const [testCountdown, setTestCountdown] = useState<number | null>(null);
-  const testTimerRef = useRef<number | null>(null);
+  const [notificationsGranted, setNotificationsGranted] = useState(true);
+  // Test-only local state removed (kept notification flow realistic)
   const { snooze } = useReminder((title) => {
     setReminderTitle(title);
     setReminderEntry('reminder');
@@ -74,7 +79,8 @@ export default function Home() {
     if (!settings) return;
     const now = new Date();
     setWithinWindow(isWithinWindow(settings, now));
-    getNextReminderTime(settings).then(setNextReminder);
+    // We intentionally do not surface an exact "next reminder in X min" countdown in UI.
+    void getNextReminderTime(settings);
   }, [settings, events]);
 
   useEffect(() => {
@@ -100,6 +106,31 @@ export default function Home() {
     void bootstrapNativeState();
   }, []);
 
+  useEffect(() => {
+    const refreshPermission = async () => {
+      const granted = await checkNotificationPermissionGranted();
+      setNotificationsGranted(granted);
+    };
+
+    const handleWindowFocus = () => {
+      void refreshPermission();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshPermission();
+      }
+    };
+
+    void refreshPermission();
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   const markJustLogged = () => {
     if (justLoggedTimeout.current != null) window.clearTimeout(justLoggedTimeout.current);
     setJustLogged(true);
@@ -111,44 +142,13 @@ export default function Home() {
 
   useEffect(() => () => {
     if (justLoggedTimeout.current != null) window.clearTimeout(justLoggedTimeout.current);
-    if (testTimerRef.current != null) window.clearInterval(testTimerRef.current);
   }, []);
 
-  const startTestNotification = async () => {
-    const triggerAt = Date.now() + 10_000;
-    setTestCountdown(10);
-    if (isNativePlatform()) {
-      const granted = await requestNativePermissions();
-      if (!granted) { setTestCountdown(null); return; }
-      await scheduleNativeAlarm(triggerAt, 'Test reminder!');
-    }
-    testTimerRef.current = window.setInterval(() => {
-      setTestCountdown((c) => {
-        if (c == null || c <= 1) {
-          if (testTimerRef.current != null) window.clearInterval(testTimerRef.current);
-          testTimerRef.current = null;
-          setReminderTitle('Test reminder!');
-          setReminderEntry('reminder');
-          setShowSnooze(true);
-          return null;
-        }
-        return c - 1;
-      });
-    }, 1000);
-  };
-
-  const fireDirectNotification = async () => {
-    if (isNativePlatform()) {
-      const granted = await requestNativePermissions();
-      if (!granted) return;
-      await fireTestNotification('Test notification!');
-    }
-  };
+  // Manual notification test buttons removed; rely on real reminder scheduling only.
 
   const snackCount = events.length;
   const totalMinutes = events.reduce((a, e) => a + e.duration, 0);
   const benefits = settings ? getBenefitsForToday(settings.snackStyle, snackCount, totalMinutes) : [];
-  const minsUntil = nextReminder != null ? minutesUntil(nextReminder) : null;
   const packTitle = settings ? SNACK_PACKS[settings.snackStyle]?.title : 'Movement snack';
   const durationMinutes = settings?.snackDuration ?? 2;
   const sortedEvents = [...events].sort((a, b) => b.timestamp - a.timestamp);
@@ -172,13 +172,45 @@ export default function Home() {
     return 'Good evening';
   })();
 
-  const maxSnacks = settings?.maxRemindersPerDay ?? 5;
+  const maxSnacks = 5;
   const progressPercent = Math.min(100, Math.round((snackCount / maxSnacks) * 100));
+  const showNotificationBanner = !!settings && !notificationsGranted;
+
+  const handleEnableNotifications = async () => {
+    const granted = isNativePlatform()
+      ? await requestNativePermissions()
+      : await requestNotificationPermission();
+    setNotificationsGranted(granted);
+  };
 
   return (
     <div className="min-h-dvh bg-surface safe-top">
       <main className="px-5 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))]">
         <motion.div variants={stagger} initial="hidden" animate="show">
+          {showNotificationBanner && (
+            <motion.div variants={fadeUp} className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3.5">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 rounded-lg bg-red-100 p-1.5">
+                  <svg className="h-4 w-4 text-red-600" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10A8 8 0 11 2 10a8 8 0 0116 0zM9 7a1 1 0 012 0v3a1 1 0 11-2 0V7zm1 7a1.25 1.25 0 100-2.5A1.25 1.25 0 0010 14z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-red-800">Notifications are off</p>
+                  <p className="mt-0.5 text-xs text-red-700">
+                    SnackMove reminders won&apos;t work until notification permissions are enabled.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleEnableNotifications}
+                    className="mt-2.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Enable notifications
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Header */}
           <motion.header variants={fadeUp} className="mb-5">
@@ -263,13 +295,8 @@ export default function Home() {
             <div className="relative z-10 p-5">
               <div className="flex items-center gap-2 mb-3">
                 <span className="bg-white/20 text-white/90 text-xs font-semibold px-2.5 py-1 rounded-full backdrop-blur-sm">
-                  Next snack
+                  {withinWindow ? 'Reminders active' : 'Reminders paused'}
                 </span>
-                {withinWindow && minsUntil != null && (
-                  <span className="bg-white/15 text-white/80 text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur-sm">
-                    in ~{minsUntil} min
-                  </span>
-                )}
               </div>
 
               <h2 className="text-white text-xl font-bold">{packTitle}</h2>
@@ -304,39 +331,12 @@ export default function Home() {
                 whileHover={{ scale: 1.01 }}
                 transition={{ type: 'spring', stiffness: 400, damping: 25 }}
               >
-                Start Snack
+                Start snack
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
               </motion.button>
             </div>
-          </motion.div>
-
-          {/* Test notifications */}
-          <motion.div variants={fadeUp} className="flex gap-2 mb-6">
-            <motion.button
-              type="button"
-              onClick={startTestNotification}
-              disabled={testCountdown != null}
-              className="flex-1 rounded-2xl border border-dashed border-primary/25 bg-primary-50/50 text-primary text-sm font-semibold py-3 disabled:opacity-50 flex items-center justify-center gap-2"
-              whileTap={{ scale: 0.97 }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              {testCountdown != null ? `In ${testCountdown}s...` : 'Test alarm (10s)'}
-            </motion.button>
-            <motion.button
-              type="button"
-              onClick={fireDirectNotification}
-              className="flex-1 rounded-2xl border border-dashed border-accent-orange/30 bg-accent-orange/5 text-accent-orange text-sm font-semibold py-3 flex items-center justify-center gap-2"
-              whileTap={{ scale: 0.97 }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              Fire now
-            </motion.button>
           </motion.div>
 
           {/* Today's progress */}

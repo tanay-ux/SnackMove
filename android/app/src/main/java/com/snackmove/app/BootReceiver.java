@@ -38,32 +38,32 @@ public class BootReceiver extends BroadcastReceiver {
         long triggerAt = prefs.getLong(KEY_NEXT_ALARM_TIME, 0);
         String title = prefs.getString(KEY_NEXT_ALARM_TITLE, "Time to move!");
 
-        if (triggerAt <= System.currentTimeMillis()) return;
+        if (triggerAt > System.currentTimeMillis()) {
+            AlarmReceiver.createNotificationChannels(context);
 
-        AlarmReceiver.createNotificationChannel(context);
+            Intent alarmIntent = new Intent(context, AlarmReceiver.class);
+            alarmIntent.putExtra(AlarmReceiver.EXTRA_TITLE, title);
+            PendingIntent pending = PendingIntent.getBroadcast(
+                    context, 0, alarmIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        Intent alarmIntent = new Intent(context, AlarmReceiver.class);
-        alarmIntent.putExtra(AlarmReceiver.EXTRA_TITLE, title);
-        PendingIntent pending = PendingIntent.getBroadcast(
-                context, 0, alarmIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
-        AlarmManager alarmMgr = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
-        if (alarmMgr != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (alarmMgr.canScheduleExactAlarms()) {
+            AlarmManager alarmMgr = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmMgr != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (alarmMgr.canScheduleExactAlarms()) {
+                        alarmMgr.setAlarmClock(
+                                new AlarmManager.AlarmClockInfo(triggerAt, pending),
+                                pending);
+                    }
+                } else {
                     alarmMgr.setAlarmClock(
                             new AlarmManager.AlarmClockInfo(triggerAt, pending),
                             pending);
                 }
-            } else {
-                alarmMgr.setAlarmClock(
-                        new AlarmManager.AlarmClockInfo(triggerAt, pending),
-                        pending);
             }
         }
 
-        // Extra safety: if the persisted next time is missing/expired, compute and schedule a new one.
+        // Always compute and schedule next alarm based on saved settings
         ReminderScheduler.ensureNextAlarmScheduled(context, "boot_or_time_change");
     }
 }

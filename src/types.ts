@@ -8,10 +8,10 @@ export interface UserSettings {
   endTime: string;   // "17:00"
   activeDays: ActiveDay[]; // [1,2,3,4,5] = Mon-Fri
   snackStyle: SnackStyle;
-  maxRemindersPerDay: number;
-  minSpacingMinutes: number;
+  reminderFrequencyMinutes: number;
   snackDuration: number; // 1-5
   notificationsEnabled: boolean;
+  vibrateOnly: boolean;
   createdAt: number;
 }
 
@@ -36,10 +36,10 @@ export const DEFAULT_SETTINGS: Omit<UserSettings, 'id' | 'createdAt'> = {
   endTime: '17:00',
   activeDays: [1, 2, 3, 4, 5],
   snackStyle: 'energizing',
-  maxRemindersPerDay: 5,
-  minSpacingMinutes: 60,
+  reminderFrequencyMinutes: 30,
   snackDuration: 2,
   notificationsEnabled: true,
+  vibrateOnly: false,
 };
 
 export const DAY_LABELS: Record<ActiveDay, string> = {

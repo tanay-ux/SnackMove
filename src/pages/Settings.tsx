@@ -87,18 +87,17 @@ export default function Settings() {
   const [endTime, setEndTime] = useState('17:00');
   const [activeDays, setActiveDays] = useState<ActiveDay[]>([1, 2, 3, 4, 5]);
   const [snackStyle, setSnackStyle] = useState<SnackStyle>('energizing');
-  const [maxReminders, setMaxReminders] = useState(6);
-  const [minSpacing, setMinSpacing] = useState(60);
+  const [reminderFrequency, setReminderFrequency] = useState(30);
   const [snackDuration, setSnackDuration] = useState(2);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [vibrateOnly, setVibrateOnly] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState(0);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const maxReminderPresets = [5, 10, 15, 20];
-  const minSpacingPresets = [15, 30, 45, 60];
+  const reminderFrequencyPresets = [5, 15, 30, 45, 60];
 
   useEffect(() => {
     if (searchParams.get('edit') === 'window') {
@@ -113,19 +112,17 @@ export default function Settings() {
       setEndTime(settings.endTime);
       setActiveDays(settings.activeDays);
       setSnackStyle(settings.snackStyle);
-      const maxR = settings.maxRemindersPerDay;
-      const minS = settings.minSpacingMinutes;
-      setMaxReminders(maxReminderPresets.includes(maxR) ? maxR : 5);
-      setMinSpacing(minSpacingPresets.includes(minS) ? minS : 30);
-      if (!maxReminderPresets.includes(maxR) || !minSpacingPresets.includes(minS)) {
+      const freq = settings.reminderFrequencyMinutes;
+      setReminderFrequency(reminderFrequencyPresets.includes(freq) ? freq : 30);
+      if (!reminderFrequencyPresets.includes(freq)) {
         saveSettingsAsync({
           ...settings,
-          maxRemindersPerDay: maxReminderPresets.includes(maxR) ? maxR : 5,
-          minSpacingMinutes: minSpacingPresets.includes(minS) ? minS : 30,
+          reminderFrequencyMinutes: 30,
         } as any);
       }
       setSnackDuration(settings.snackDuration);
       setNotificationsEnabled(settings.notificationsEnabled);
+      setVibrateOnly(settings.vibrateOnly ?? false);
     }
   }, [settings]);
 
@@ -179,7 +176,7 @@ export default function Settings() {
               <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-            }>Days Active</SectionLabel>
+            }>Days active</SectionLabel>
             <div className="flex justify-between gap-1.5">
               {([1, 2, 3, 4, 5, 6, 0] as ActiveDay[]).map((d) => {
                 const selected = activeDays.includes(d);
@@ -317,36 +314,26 @@ export default function Settings() {
                   onChange={(v) => { setNotificationsEnabled(v); update({ notificationsEnabled: v }); }}
                 />
               </div>
-              <div>
-                <label className="text-xs font-medium text-accent-gray mb-2 block">Max reminders per day</label>
-                <div className="flex gap-2">
-                  {maxReminderPresets.map((n) => (
-                    <motion.button
-                      key={n}
-                      type="button"
-                      onClick={() => { setMaxReminders(n); update({ maxRemindersPerDay: n }); }}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 ${
-                        maxReminders === n
-                          ? 'border-primary bg-primary-50 text-primary'
-                          : 'border-gray-100 bg-surface text-accent-gray'
-                      }`}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      {n}
-                    </motion.button>
-                  ))}
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="text-sm font-medium text-accent-gray">Vibrate only</span>
+                  <p className="text-[11px] text-accent-gray mt-0.5">Disable reminder sound and keep vibration.</p>
                 </div>
+                <ToggleSwitch
+                  checked={vibrateOnly}
+                  onChange={(v) => { setVibrateOnly(v); update({ vibrateOnly: v }); }}
+                />
               </div>
               <div>
-                <label className="text-xs font-medium text-accent-gray mb-2 block">Minimum spacing (min)</label>
+                <label className="text-xs font-medium text-accent-gray mb-2 block">Reminder frequency (mins)</label>
                 <div className="flex gap-2">
-                  {minSpacingPresets.map((n) => (
+                  {reminderFrequencyPresets.map((n) => (
                     <motion.button
                       key={n}
                       type="button"
-                      onClick={() => { setMinSpacing(n); update({ minSpacingMinutes: n }); }}
+                      onClick={() => { setReminderFrequency(n); update({ reminderFrequencyMinutes: n }); }}
                       className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 ${
-                        minSpacing === n
+                        reminderFrequency === n
                           ? 'border-primary bg-primary-50 text-primary'
                           : 'border-gray-100 bg-surface text-accent-gray'
                       }`}
@@ -356,6 +343,9 @@ export default function Settings() {
                     </motion.button>
                   ))}
                 </div>
+                <p className="text-[11px] text-accent-gray mt-2 leading-relaxed">
+                  Reminders fire inside your time window, with slight variation so they don&apos;t feel too predictable.
+                </p>
               </div>
             </div>
           </SectionCard>
@@ -400,7 +390,7 @@ export default function Settings() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-accent-gray">Give feedback</p>
+                <p className="text-sm font-semibold text-accent-gray">Feedback/bug report</p>
                 <p className="text-xs text-accent-gray">Help us improve SnackMove</p>
               </div>
             </motion.button>

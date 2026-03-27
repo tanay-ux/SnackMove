@@ -16,7 +16,8 @@ import androidx.core.app.NotificationCompat;
 public class AlarmReceiver extends BroadcastReceiver {
 
     private static final String TAG = "SnackAlarm";
-    public static final String CHANNEL_ID = "snack_alarm";
+    public static final String CHANNEL_ID_SOUND = "snack_alarm_sound";
+    public static final String CHANNEL_ID_VIBRATE = "snack_alarm_vibrate";
     public static final int NOTIFICATION_ID = 1001;
     public static final String EXTRA_TITLE = "alarm_title";
 
@@ -28,15 +29,16 @@ public class AlarmReceiver extends BroadcastReceiver {
         if (title == null) title = "Time to move!";
         Log.i(TAG, "AlarmReceiver title: " + title);
 
-        createNotificationChannel(context);
-        postNotification(context, title);
+        boolean vibrateOnly = isVibrateOnlyEnabled(context);
+        createNotificationChannels(context);
+        postNotification(context, title, vibrateOnly);
 
         // Critical: schedule the next reminder natively so alarms continue even if the app isn't opened.
         ReminderScheduler.ensureNextAlarmScheduled(context, "alarm_fired");
     }
 
-    public static void postNotification(Context context, String title) {
-        Log.i(TAG, "postNotification called with title: " + title);
+    public static void postNotification(Context context, String title, boolean vibrateOnly) {
+        Log.i(TAG, "postNotification called with title: " + title + " vibrateOnly=" + vibrateOnly);
 
         Intent startIntent = new Intent(context, MainActivity.class);
         startIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -58,7 +60,8 @@ public class AlarmReceiver extends BroadcastReceiver {
                 context, 102, fullScreenIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(
+                context, vibrateOnly ? CHANNEL_ID_VIBRATE : CHANNEL_ID_SOUND)
                 .setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setContentTitle(title)
                 .setContentText("Your snack workout is ready")
@@ -69,8 +72,13 @@ public class AlarmReceiver extends BroadcastReceiver {
                 .setFullScreenIntent(fullScreenPending, true)
                 .addAction(0, "Start", startPending)
                 .addAction(0, "Snooze", snoozePending)
-                .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
-                .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+                .setDefaults(NotificationCompat.DEFAULT_VIBRATE);
+
+        if (!vibrateOnly) {
+            builder.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+        } else {
+            builder.setSilent(true);
+        }
 
         NotificationManager mgr = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
@@ -81,12 +89,14 @@ public class AlarmReceiver extends BroadcastReceiver {
         }
     }
 
-    public static void createNotificationChannel(Context context) {
+    public static void createNotificationChannels(Context context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationManager mgr = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (mgr != null && mgr.getNotificationChannel(CHANNEL_ID) == null) {
+            if (mgr == null) return;
+
+            if (mgr.getNotificationChannel(CHANNEL_ID_SOUND) == null) {
                 NotificationChannel channel = new NotificationChannel(
-                        CHANNEL_ID,
+                        CHANNEL_ID_SOUND,
                         "Snack Alarms",
                         NotificationManager.IMPORTANCE_HIGH);
                 channel.setDescription("Snack workout reminders");
@@ -98,8 +108,25 @@ public class AlarmReceiver extends BroadcastReceiver {
                 channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), audioAttr);
                 channel.setBypassDnd(true);
                 mgr.createNotificationChannel(channel);
-                Log.i(TAG, "Notification channel created");
+            }
+
+            if (mgr.getNotificationChannel(CHANNEL_ID_VIBRATE) == null) {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_ID_VIBRATE,
+                        "Snack Alarms (Vibrate only)",
+                        NotificationManager.IMPORTANCE_HIGH);
+                channel.setDescription("Snack workout reminders without sound");
+                channel.enableVibration(true);
+                channel.setSound(null, null);
+                channel.setBypassDnd(true);
+                mgr.createNotificationChannel(channel);
             }
         }
+    }
+
+    public static boolean isVibrateOnlyEnabled(Context context) {
+        return context
+                .getSharedPreferences(ReminderScheduler.PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(ReminderScheduler.KEY_VIBRATE_ONLY, false);
     }
 }

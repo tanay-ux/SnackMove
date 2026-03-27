@@ -104,6 +104,8 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "SnackAlarm"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkNotificationPermissionStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "syncSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "scheduleAlarm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelAlarm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkLaunchIntent", returnType: CAPPluginReturnPromise),
@@ -114,6 +116,7 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
     private let alarmNotificationID = "snack_alarm_notification"
     private let testNotificationID = "snack_alarm_test_notification"
     private let defaultBody = "Your snack workout is ready"
+    private let vibrateOnlyKey = "snack_vibrate_only"
 
     @objc override public func requestPermissions(_ call: CAPPluginCall) {
         CAPLog.print("[SnackAlarm][iOS] requestPermissions called")
@@ -140,6 +143,29 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    @objc public func checkNotificationPermissionStatus(_ call: CAPPluginCall) {
+        center.getNotificationSettings { settings in
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                status = "granted"
+            case .denied:
+                status = "denied"
+            case .notDetermined:
+                status = "prompt"
+            @unknown default:
+                status = "denied"
+            }
+            call.resolve(["notifications": status])
+        }
+    }
+
+    @objc public func syncSettings(_ call: CAPPluginCall) {
+        let vibrateOnly = call.getBool("vibrateOnly") ?? false
+        UserDefaults.standard.set(vibrateOnly, forKey: vibrateOnlyKey)
+        call.resolve(["synced": true])
+    }
+
     @objc public func scheduleAlarm(_ call: CAPPluginCall) {
         guard let timestampMs = call.getDouble("time") else {
             call.reject("Missing required parameter: time")
@@ -154,7 +180,10 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = defaultBody
-        content.sound = .default
+        let vibrateOnly = UserDefaults.standard.bool(forKey: vibrateOnlyKey)
+        if !vibrateOnly {
+            content.sound = .default
+        }
         content.userInfo = ["SNACK_START": true]
 
         if #available(iOS 15.0, *) {
@@ -198,7 +227,10 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = defaultBody
-        content.sound = .default
+        let vibrateOnly = UserDefaults.standard.bool(forKey: vibrateOnlyKey)
+        if !vibrateOnly {
+            content.sound = .default
+        }
         content.userInfo = ["SNACK_START": true]
 
         if #available(iOS 15.0, *) {

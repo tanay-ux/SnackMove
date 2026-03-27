@@ -68,7 +68,7 @@ export default function OnboardingTimeWindow() {
 
       <div className="space-y-6 flex-1">
         <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show">
-          <h2 className="text-xs font-semibold text-accent-gray uppercase tracking-wider mb-3">Days Active</h2>
+          <h2 className="text-xs font-semibold text-accent-gray uppercase tracking-wider mb-3">Days active</h2>
           <div className="flex justify-between gap-1.5">
             {([1, 2, 3, 4, 5, 6, 0] as ActiveDay[]).map((d) => {
               const selected = activeDays.includes(d);
@@ -99,7 +99,7 @@ export default function OnboardingTimeWindow() {
           animate="show"
           className="bg-white rounded-2xl p-5 shadow-soft border border-gray-100/80"
         >
-          <h2 className="text-xs font-semibold text-accent-gray uppercase tracking-wider mb-1">Time Window</h2>
+          <h2 className="text-xs font-semibold text-accent-gray uppercase tracking-wider mb-1">Time window</h2>
           <p className="text-[11px] text-accent-gray mb-3">
             Drag the handles to set your reminder window.
           </p>

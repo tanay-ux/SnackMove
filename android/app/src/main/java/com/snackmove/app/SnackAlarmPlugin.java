@@ -60,6 +60,19 @@ public class SnackAlarmPlugin extends Plugin {
         call.resolve(result);
     }
 
+    @PluginMethod
+    public void checkNotificationPermissionStatus(PluginCall call) {
+        String status = "granted";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            boolean granted = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED;
+            status = granted ? "granted" : "denied";
+        }
+        JSObject result = new JSObject();
+        result.put("notifications", status);
+        call.resolve(result);
+    }
+
     @PermissionCallback
     private void notificationPermCallback(PluginCall call) {
         boolean granted = true;
@@ -98,6 +111,28 @@ public class SnackAlarmPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void syncSettings(PluginCall call) {
+        Context context = getContext();
+        boolean enabled = call.getBoolean("enabled", true);
+        String startTime = call.getString("startTime", "09:00");
+        String endTime = call.getString("endTime", "17:00");
+        String activeDays = call.getString("activeDays", "1,2,3,4,5");
+        int frequencyMinutes = call.getInt("reminderFrequencyMinutes", 30);
+        boolean vibrateOnly = call.getBoolean("vibrateOnly", false);
+
+        Log.i(TAG, "syncSettings: enabled=" + enabled + " startTime=" + startTime
+                + " endTime=" + endTime + " activeDays=" + activeDays
+                + " frequencyMinutes=" + frequencyMinutes + " vibrateOnly=" + vibrateOnly);
+
+        ReminderScheduler.saveScheduleSettings(
+                context, enabled, startTime, endTime, activeDays, frequencyMinutes, vibrateOnly);
+
+        ReminderScheduler.ensureNextAlarmScheduled(context, "syncSettings");
+
+        call.resolve(new JSObject().put("synced", true));
+    }
+
+    @PluginMethod
     public void scheduleAlarm(PluginCall call) {
         String title = call.getString("title", "Time to move!");
 
@@ -121,11 +156,12 @@ public class SnackAlarmPlugin extends Plugin {
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         prefs.edit()
+                .putBoolean(ReminderScheduler.KEY_SCHEDULE_ENABLED, true)
                 .putLong(KEY_NEXT_ALARM_TIME, triggerAt)
                 .putString(KEY_NEXT_ALARM_TITLE, title)
                 .apply();
 
-        AlarmReceiver.createNotificationChannel(context);
+        AlarmReceiver.createNotificationChannels(context);
 
         Intent alarmIntent = new Intent(context, AlarmReceiver.class);
         alarmIntent.putExtra(AlarmReceiver.EXTRA_TITLE, title);
@@ -173,8 +209,9 @@ public class SnackAlarmPlugin extends Plugin {
         Log.i(TAG, "testNotification: firing notification directly (bypassing AlarmManager)");
         String title = call.getString("title", "Test reminder!");
         Context context = getContext();
-        AlarmReceiver.createNotificationChannel(context);
-        AlarmReceiver.postNotification(context, title);
+        AlarmReceiver.createNotificationChannels(context);
+        boolean vibrateOnly = AlarmReceiver.isVibrateOnlyEnabled(context);
+        AlarmReceiver.postNotification(context, title, vibrateOnly);
         Log.i(TAG, "testNotification: done");
         call.resolve(new JSObject().put("fired", true));
     }

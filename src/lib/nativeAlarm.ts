@@ -2,7 +2,16 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 
 interface SnackAlarmPlugin {
   requestPermissions(): Promise<{ notifications: string }>;
+  checkNotificationPermissionStatus(): Promise<{ notifications: string }>;
   scheduleAlarm(options: { time: number; title: string }): Promise<{ scheduled: boolean }>;
+  syncSettings(options: {
+    enabled: boolean;
+    startTime: string;
+    endTime: string;
+    activeDays: string;
+    reminderFrequencyMinutes: number;
+    vibrateOnly: boolean;
+  }): Promise<{ synced: boolean }>;
   cancelAlarm(): Promise<{ cancelled: boolean }>;
   checkLaunchIntent(): Promise<{ snackStart: boolean }>;
   testNotification(options: { title: string }): Promise<{ fired: boolean }>;
@@ -37,6 +46,54 @@ export async function requestNativePermissions(): Promise<boolean> {
     return result.notifications === 'granted';
   } catch (error) {
     console.error('[SnackAlarm] requestNativePermissions:error', error);
+    return false;
+  }
+}
+
+export async function checkNotificationPermissionGranted(): Promise<boolean> {
+  const ctx = nativeContext();
+  if (!ctx.native) {
+    if (!('Notification' in window)) return false;
+    return Notification.permission === 'granted';
+  }
+  if (!ctx.pluginAvailable) return false;
+  try {
+    const result = await SnackAlarm.checkNotificationPermissionStatus();
+    return result.notifications === 'granted';
+  } catch (error) {
+    console.error('[SnackAlarm] checkNotificationPermissionGranted:error', error);
+    return false;
+  }
+}
+
+export async function syncNativeSettings(settings: {
+  notificationsEnabled: boolean;
+  startTime: string;
+  endTime: string;
+  activeDays: number[];
+  reminderFrequencyMinutes: number;
+  vibrateOnly: boolean;
+}): Promise<boolean> {
+  const ctx = nativeContext();
+  console.log('[SnackAlarm] syncNativeSettings:start', { ...ctx, settings });
+  if (!ctx.native) return false;
+  if (!ctx.pluginAvailable) {
+    console.error('[SnackAlarm] syncNativeSettings:plugin unavailable', ctx);
+    return false;
+  }
+  try {
+    const result = await SnackAlarm.syncSettings({
+      enabled: settings.notificationsEnabled,
+      startTime: settings.startTime,
+      endTime: settings.endTime,
+      activeDays: settings.activeDays.join(','),
+      reminderFrequencyMinutes: settings.reminderFrequencyMinutes,
+      vibrateOnly: settings.vibrateOnly,
+    });
+    console.log('[SnackAlarm] syncNativeSettings:result', result);
+    return result.synced;
+  } catch (error) {
+    console.error('[SnackAlarm] syncNativeSettings:error', error);
     return false;
   }
 }

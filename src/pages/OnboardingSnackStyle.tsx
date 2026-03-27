@@ -82,7 +82,6 @@ export default function OnboardingSnackStyle() {
         {(Object.keys(SNACK_PACKS) as SnackStyle[]).map((style, index) => {
           const pack = SNACK_PACKS[style];
           const isSelected = selected === style;
-          const isRecommended = style === 'energizing';
           const config = STYLE_CONFIG[style];
 
           return (
@@ -108,11 +107,6 @@ export default function OnboardingSnackStyle() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-accent-gray">{pack.title}</span>
-                    {isRecommended && (
-                      <span className="text-[10px] font-bold text-primary bg-primary-50 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                        Recommended
-                      </span>
-                    )}
                   </div>
                   <p className="text-sm text-accent-gray mt-0.5">{pack.subtitle}</p>
                   <p className="text-xs text-accent-gray mt-1.5 leading-relaxed">{pack.explanation}</p>
@@ -149,7 +143,7 @@ export default function OnboardingSnackStyle() {
         className="mt-8 w-full bg-primary text-white font-bold py-3.5 rounded-xl shadow-glow-sm flex items-center justify-center gap-2"
         whileTap={{ scale: 0.97 }}
       >
-        Start Moving
+        Start moving
         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>

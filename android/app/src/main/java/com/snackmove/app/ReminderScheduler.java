@@ -7,9 +7,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.util.Log;
-
 import java.security.SecureRandom;
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
@@ -28,20 +26,14 @@ public final class ReminderScheduler {
     static final String KEY_START_TIME = "start_time"; // "09:00"
     static final String KEY_END_TIME = "end_time";     // "17:00"
     static final String KEY_ACTIVE_DAYS = "active_days"; // "1,2,3,4,5" (Sun=0..Sat=6)
-    static final String KEY_MAX_REMINDERS = "max_reminders_per_day";
-    static final String KEY_MIN_SPACING = "min_spacing_minutes";
+    static final String KEY_REMINDER_FREQUENCY_MIN = "reminder_frequency_minutes";
+    static final String KEY_VIBRATE_ONLY = "vibrate_only";
 
     // Persisted next alarm (used by BootReceiver)
     static final String KEY_NEXT_ALARM_TIME = "next_alarm_time";
     static final String KEY_NEXT_ALARM_TITLE = "next_alarm_title";
 
-    // Per-day derived params (to keep cadence stable within a day)
-    private static final String KEY_DAY_SIGNATURE = "day_signature";
-    private static final String KEY_DAY_INTERVAL_MIN = "day_interval_min";
-    private static final String KEY_DAY_JITTER_MIN = "day_jitter_min";
-
-    private static final int DEFAULT_MIN_INTERVAL_MINUTES = 30;
-    private static final int FALLBACK_RANDOM_RANGE_MINUTES = 15;
+    private static final int JITTER_RANGE_MINUTES = 5;
 
     private static final String[] TITLES = new String[] {
             "2-minute reset?",
@@ -57,8 +49,8 @@ public final class ReminderScheduler {
             String startTime,
             String endTime,
             String activeDaysCsv,
-            int maxRemindersPerDay,
-            int minSpacingMinutes
+            int reminderFrequencyMinutes,
+            boolean vibrateOnly
     ) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         prefs.edit()
@@ -66,8 +58,8 @@ public final class ReminderScheduler {
                 .putString(KEY_START_TIME, startTime != null ? startTime : "09:00")
                 .putString(KEY_END_TIME, endTime != null ? endTime : "17:00")
                 .putString(KEY_ACTIVE_DAYS, activeDaysCsv != null ? activeDaysCsv : "1,2,3,4,5")
-                .putInt(KEY_MAX_REMINDERS, Math.max(1, maxRemindersPerDay))
-                .putInt(KEY_MIN_SPACING, Math.max(0, minSpacingMinutes))
+                .putInt(KEY_REMINDER_FREQUENCY_MIN, Math.max(1, reminderFrequencyMinutes))
+                .putBoolean(KEY_VIBRATE_ONLY, vibrateOnly)
                 .apply();
     }
 
@@ -116,7 +108,7 @@ public final class ReminderScheduler {
                 .putString(KEY_NEXT_ALARM_TITLE, title)
                 .apply();
 
-        AlarmReceiver.createNotificationChannel(context);
+        AlarmReceiver.createNotificationChannels(context);
 
         Intent alarmIntent = new Intent(context, AlarmReceiver.class);
         alarmIntent.putExtra(AlarmReceiver.EXTRA_TITLE, title);
@@ -159,8 +151,7 @@ public final class ReminderScheduler {
         String startTime = prefs.getString(KEY_START_TIME, "09:00");
         String endTime = prefs.getString(KEY_END_TIME, "17:00");
         String activeDaysCsv = prefs.getString(KEY_ACTIVE_DAYS, "1,2,3,4,5");
-        int maxReminders = Math.max(1, prefs.getInt(KEY_MAX_REMINDERS, 6));
-        int minSpacing = Math.max(0, prefs.getInt(KEY_MIN_SPACING, 60));
+        int freqMin = Math.max(1, prefs.getInt(KEY_REMINDER_FREQUENCY_MIN, 30));
 
         int startMins = parseTimeToMinutes(startTime);
         int endMins = parseTimeToMinutes(endTime);
@@ -182,56 +173,20 @@ public final class ReminderScheduler {
 
             if (dayOffset == 0 && nowMs > dayEndMs) continue;
 
-            DayParams params = getOrCreateDayParams(prefs, day, windowMinutes, maxReminders, minSpacing);
-            long firstMs = dayStartMs + (long) params.jitterMinutes * 60_000L;
+            long anchor = Math.max(nowMs, dayStartMs);
+            long base = anchor + (long) freqMin * 60_000L;
 
-            for (int n = 0; n < maxReminders; n++) {
-                long t = firstMs + (long) n * params.intervalMinutes * 60_000L;
-                if (t < dayStartMs) continue;
-                if (t > dayEndMs) break;
-                if (t <= nowMs + 1000L) continue;
-                return t;
-            }
+            SecureRandom rng = new SecureRandom();
+            int jitterMin = rng.nextInt(JITTER_RANGE_MINUTES * 2 + 1) - JITTER_RANGE_MINUTES; // [-5..+5]
+            long candidate = base + (long) jitterMin * 60_000L;
+
+            if (candidate <= nowMs + 1000L) candidate = nowMs + Math.min((long) freqMin * 60_000L, 60_000L);
+            if (candidate < dayStartMs) candidate = dayStartMs + 60_000L;
+            if (candidate > dayEndMs) continue;
+            return candidate;
         }
 
         return null;
-    }
-
-    private static DayParams getOrCreateDayParams(
-            SharedPreferences prefs,
-            Calendar day,
-            int windowMinutes,
-            int maxReminders,
-            int minSpacingMinutes
-    ) {
-        String dayKey = formatDayKey(day.getTimeInMillis());
-        String signature = dayKey + ":" + windowMinutes + ":" + maxReminders + ":" + minSpacingMinutes;
-
-        String existingSig = prefs.getString(KEY_DAY_SIGNATURE, null);
-        int existingInterval = prefs.getInt(KEY_DAY_INTERVAL_MIN, -1);
-        int existingJitter = prefs.getInt(KEY_DAY_JITTER_MIN, -1);
-
-        if (signature.equals(existingSig) && existingInterval > 0 && existingJitter >= 0) {
-            return new DayParams(existingInterval, existingJitter);
-        }
-
-        int baseInterval = (int) Math.floor((double) windowMinutes / (double) Math.max(1, maxReminders));
-        int minFloor = Math.max(DEFAULT_MIN_INTERVAL_MINUTES, minSpacingMinutes);
-
-        SecureRandom rng = new SecureRandom();
-        int interval = baseInterval;
-        if (interval < minFloor) {
-            interval = minFloor + rng.nextInt(FALLBACK_RANDOM_RANGE_MINUTES + 1);
-        }
-        int jitter = interval > 1 ? rng.nextInt(interval) : 0;
-
-        prefs.edit()
-                .putString(KEY_DAY_SIGNATURE, signature)
-                .putInt(KEY_DAY_INTERVAL_MIN, interval)
-                .putInt(KEY_DAY_JITTER_MIN, jitter)
-                .apply();
-
-        return new DayParams(interval, jitter);
     }
 
     private static int parseTimeToMinutes(String hhmm) {
@@ -271,23 +226,11 @@ public final class ReminderScheduler {
         return d.getTimeInMillis();
     }
 
-    private static String formatDayKey(long ts) {
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-        return sdf.format(new Date(ts));
-    }
 
     private static String randomTitle() {
         SecureRandom rng = new SecureRandom();
         return TITLES[rng.nextInt(TITLES.length)];
     }
 
-    private static final class DayParams {
-        final int intervalMinutes;
-        final int jitterMinutes;
-        DayParams(int intervalMinutes, int jitterMinutes) {
-            this.intervalMinutes = Math.max(1, intervalMinutes);
-            this.jitterMinutes = Math.max(0, jitterMinutes);
-        }
-    }
 }
 
