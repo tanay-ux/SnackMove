@@ -105,6 +105,7 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkNotificationPermissionStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openNotificationSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "syncSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "scheduleAlarm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelAlarm", returnType: CAPPluginReturnPromise),
@@ -157,6 +158,15 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
                 status = "denied"
             }
             call.resolve(["notifications": status])
+        }
+    }
+
+    @objc func openNotificationSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            }
+            call.resolve()
         }
     }
 

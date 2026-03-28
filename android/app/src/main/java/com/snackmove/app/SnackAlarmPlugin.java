@@ -66,11 +66,49 @@ public class SnackAlarmPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             boolean granted = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS)
                     == PackageManager.PERMISSION_GRANTED;
-            status = granted ? "granted" : "denied";
+            if (granted) {
+                status = "granted";
+            } else {
+                boolean shouldShow = getActivity() != null
+                        && getActivity().shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS);
+                android.content.SharedPreferences prefs = getContext()
+                        .getSharedPreferences("capacitor_permission_prefs", Context.MODE_PRIVATE);
+                String stored = prefs.getString(Manifest.permission.POST_NOTIFICATIONS, null);
+                if (shouldShow || stored != null) {
+                    status = "denied";
+                } else {
+                    status = "prompt";
+                }
+            }
         }
         JSObject result = new JSObject();
         result.put("notifications", status);
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Context context = getContext();
+        try {
+            Intent intent = new Intent();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+            } else {
+                intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + context.getPackageName()));
+            }
+            if (getActivity() != null) {
+                getActivity().startActivity(intent);
+            } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            }
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "openNotificationSettings failed", e);
+            call.reject("Failed to open notification settings", e.getMessage());
+        }
     }
 
     @PermissionCallback

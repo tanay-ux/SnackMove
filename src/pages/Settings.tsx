@@ -1,13 +1,24 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import BottomNav from '../components/BottomNav';
 import CircularTimeRangePicker from '../components/CircularTimeRangePicker';
 import FeedbackModal from '../components/FeedbackModal';
+import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { useAppStore } from '../store/useAppStore';
 import { DAY_LABELS, type ActiveDay, type SnackStyle } from '../types';
 import { SNACK_PACKS } from '../lib/snackPacks';
 import { Capacitor } from '@capacitor/core';
+import {
+  isNativePlatform,
+  getNotificationPermissionStatus,
+  checkNotificationPermissionGranted,
+  requestNativePermissions,
+  openAppNotificationSettings,
+  syncNativeSettings,
+  type PermissionStatus,
+} from '../lib/nativeAlarm';
+import { requestNotificationPermission } from '../lib/push';
 
 function formatDisplayTime(t: string): string {
   const [hStr, mStr] = t.split(':');
@@ -90,6 +101,8 @@ export default function Settings() {
   const [reminderFrequency, setReminderFrequency] = useState(30);
   const [snackDuration, setSnackDuration] = useState(2);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [osPermission, setOsPermission] = useState<PermissionStatus>('granted');
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [vibrateOnly, setVibrateOnly] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState(0);
@@ -105,6 +118,82 @@ export default function Settings() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  const refreshOsPermission = useCallback(async () => {
+    const status = await getNotificationPermissionStatus();
+    setOsPermission(status);
+  }, []);
+
+  useEffect(() => {
+    void refreshOsPermission();
+    const onFocus = () => void refreshOsPermission();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshOsPermission();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshOsPermission]);
+
+  const notifToggleChecked = notificationsEnabled && osPermission === 'granted';
+
+  const syncSettingsToNative = useCallback(() => {
+    if (!settings || !isNativePlatform()) return;
+    void syncNativeSettings({
+      notificationsEnabled: settings.notificationsEnabled,
+      startTime: settings.startTime,
+      endTime: settings.endTime,
+      activeDays: settings.activeDays as number[],
+      reminderFrequencyMinutes: settings.reminderFrequencyMinutes,
+      vibrateOnly: settings.vibrateOnly ?? false,
+    });
+  }, [settings]);
+
+  const handleRequestPermission = async () => {
+    setShowPermissionModal(false);
+    if (isNativePlatform()) {
+      await requestNativePermissions();
+      const granted = await checkNotificationPermissionGranted();
+      if (granted) {
+        setOsPermission('granted');
+        setNotificationsEnabled(true);
+        update({ notificationsEnabled: true });
+        syncSettingsToNative();
+      }
+    } else {
+      const granted = await requestNotificationPermission();
+      setOsPermission(granted ? 'granted' : 'denied');
+      if (granted) {
+        setNotificationsEnabled(true);
+        update({ notificationsEnabled: true });
+      }
+    }
+    await refreshOsPermission();
+  };
+
+  const handleNotificationToggle = async (wantsOn: boolean) => {
+    if (!wantsOn) {
+      setNotificationsEnabled(false);
+      update({ notificationsEnabled: false });
+      return;
+    }
+    if (osPermission === 'granted') {
+      setNotificationsEnabled(true);
+      update({ notificationsEnabled: true });
+      return;
+    }
+    if (osPermission === 'prompt') {
+      setShowPermissionModal(true);
+      return;
+    }
+    // osPermission === 'denied' — must go to system settings
+    if (isNativePlatform()) {
+      await openAppNotificationSettings();
+    }
+  };
 
   useEffect(() => {
     if (settings) {
@@ -308,10 +397,27 @@ export default function Settings() {
             }>Reminders</SectionLabel>
             <div className="space-y-4">
               <div className="flex justify-between items-center pt-1">
-                <span className="text-sm font-medium text-accent-gray">Notifications</span>
+                <div>
+                  <span className="text-sm font-medium text-accent-gray">Notifications</span>
+                  {osPermission !== 'granted' && notificationsEnabled && (
+                    <p className="text-[11px] text-red-500 mt-0.5">
+                      Blocked by system settings.{' '}
+                      <button
+                        type="button"
+                        className="underline font-semibold"
+                        onClick={() => {
+                          if (osPermission === 'prompt') setShowPermissionModal(true);
+                          else void openAppNotificationSettings();
+                        }}
+                      >
+                        Fix
+                      </button>
+                    </p>
+                  )}
+                </div>
                 <ToggleSwitch
-                  checked={notificationsEnabled}
-                  onChange={(v) => { setNotificationsEnabled(v); update({ notificationsEnabled: v }); }}
+                  checked={notifToggleChecked}
+                  onChange={(v) => void handleNotificationToggle(v)}
                 />
               </div>
               <div className="flex justify-between items-center">
@@ -440,6 +546,15 @@ export default function Settings() {
 
       <AnimatePresence>
         {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showPermissionModal && (
+          <NotificationPermissionModal
+            onAllow={() => void handleRequestPermission()}
+            onCancel={() => setShowPermissionModal(false)}
+          />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>

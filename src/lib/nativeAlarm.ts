@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 interface SnackAlarmPlugin {
   requestPermissions(): Promise<{ notifications: string }>;
   checkNotificationPermissionStatus(): Promise<{ notifications: string }>;
+  openNotificationSettings(): Promise<void>;
   scheduleAlarm(options: { time: number; title: string }): Promise<{ scheduled: boolean }>;
   syncSettings(options: {
     enabled: boolean;
@@ -30,6 +31,39 @@ function nativeContext() {
 
 export function isNativePlatform(): boolean {
   return Capacitor.isNativePlatform();
+}
+
+export function getPlatformName(): 'android' | 'ios' | 'web' {
+  return Capacitor.getPlatform() as 'android' | 'ios' | 'web';
+}
+
+export type PermissionStatus = 'granted' | 'denied' | 'prompt';
+
+/**
+ * Returns the OS-level notification permission status.
+ * 'prompt'  = never asked (can show the native dialog)
+ * 'denied'  = previously denied / blocked
+ * 'granted' = permission active
+ */
+export async function getNotificationPermissionStatus(): Promise<PermissionStatus> {
+  const ctx = nativeContext();
+  if (!ctx.native) {
+    if (!('Notification' in window)) return 'denied';
+    const p = Notification.permission;
+    if (p === 'granted') return 'granted';
+    if (p === 'denied') return 'denied';
+    return 'prompt';
+  }
+  if (!ctx.pluginAvailable) return 'denied';
+  try {
+    const result = await SnackAlarm.checkNotificationPermissionStatus();
+    const v = result.notifications;
+    if (v === 'granted') return 'granted';
+    if (v === 'prompt') return 'prompt';
+    return 'denied';
+  } catch {
+    return 'denied';
+  }
 }
 
 export async function requestNativePermissions(): Promise<boolean> {
@@ -63,6 +97,17 @@ export async function checkNotificationPermissionGranted(): Promise<boolean> {
   } catch (error) {
     console.error('[SnackAlarm] checkNotificationPermissionGranted:error', error);
     return false;
+  }
+}
+
+/** Opens system notification settings for this app (native only). */
+export async function openAppNotificationSettings(): Promise<void> {
+  const ctx = nativeContext();
+  if (!ctx.native || !ctx.pluginAvailable) return;
+  try {
+    await SnackAlarm.openNotificationSettings();
+  } catch (error) {
+    console.error('[SnackAlarm] openAppNotificationSettings:error', error);
   }
 }
 

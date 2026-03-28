@@ -15,10 +15,14 @@ import { requestNotificationPermission } from '../lib/push';
 import {
   checkNativeLaunchIntent,
   checkNotificationPermissionGranted,
+  getNotificationPermissionStatus,
   isNativePlatform,
+  openAppNotificationSettings,
   requestNativePermissions,
+  syncNativeSettings,
 } from '../lib/nativeAlarm';
 import RatePrompt from '../components/RatePrompt';
+import NotificationPermissionModal from '../components/NotificationPermissionModal';
 
 function AnimatedNumber({ value }: { value: number }) {
   return (
@@ -57,7 +61,7 @@ export default function Home() {
   const [nextSnackSteps, setNextSnackSteps] = useState<ExerciseStep[]>([]);
   const [openSnackKey, setOpenSnackKey] = useState<string | null>(null);
   const [notificationsGranted, setNotificationsGranted] = useState(true);
-  // Test-only local state removed (kept notification flow realistic)
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
   const { snooze } = useReminder((title) => {
     setReminderTitle(title);
     setReminderEntry('reminder');
@@ -93,8 +97,6 @@ export default function Home() {
   useEffect(() => {
     window.scrollTo(0, 0);
     const bootstrapNativeState = async () => {
-      const granted = await requestNativePermissions();
-      console.log('[Home] initial notification permission granted:', granted);
       const started = await checkNativeLaunchIntent();
       console.log('[Home] launch intent snackStart:', started);
       if (started) {
@@ -109,7 +111,19 @@ export default function Home() {
   useEffect(() => {
     const refreshPermission = async () => {
       const granted = await checkNotificationPermissionGranted();
-      setNotificationsGranted(granted);
+      setNotificationsGranted((was) => {
+        if (granted && was === false && settings && isNativePlatform()) {
+          void syncNativeSettings({
+            notificationsEnabled: settings.notificationsEnabled,
+            startTime: settings.startTime,
+            endTime: settings.endTime,
+            activeDays: settings.activeDays as number[],
+            reminderFrequencyMinutes: settings.reminderFrequencyMinutes,
+            vibrateOnly: settings.vibrateOnly ?? false,
+          });
+        }
+        return granted;
+      });
     };
 
     const handleWindowFocus = () => {
@@ -129,7 +143,7 @@ export default function Home() {
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [settings]);
 
   const markJustLogged = () => {
     if (justLoggedTimeout.current != null) window.clearTimeout(justLoggedTimeout.current);
@@ -177,9 +191,39 @@ export default function Home() {
   const showNotificationBanner = !!settings && !notificationsGranted;
 
   const handleEnableNotifications = async () => {
-    const granted = isNativePlatform()
-      ? await requestNativePermissions()
-      : await requestNotificationPermission();
+    const status = await getNotificationPermissionStatus();
+    if (status === 'prompt') {
+      setShowPermissionModal(true);
+      return;
+    }
+    if (status === 'denied') {
+      if (isNativePlatform()) {
+        await openAppNotificationSettings();
+      }
+      return;
+    }
+    await doRequestPermission();
+  };
+
+  const doRequestPermission = async () => {
+    setShowPermissionModal(false);
+    if (isNativePlatform()) {
+      await requestNativePermissions();
+      const granted = await checkNotificationPermissionGranted();
+      setNotificationsGranted(granted);
+      if (granted && settings) {
+        void syncNativeSettings({
+          notificationsEnabled: settings.notificationsEnabled,
+          startTime: settings.startTime,
+          endTime: settings.endTime,
+          activeDays: settings.activeDays as number[],
+          reminderFrequencyMinutes: settings.reminderFrequencyMinutes,
+          vibrateOnly: settings.vibrateOnly ?? false,
+        });
+      }
+      return;
+    }
+    const granted = await requestNotificationPermission();
     setNotificationsGranted(granted);
   };
 
@@ -480,6 +524,15 @@ export default function Home() {
 
         </motion.div>
       </main>
+
+      <AnimatePresence>
+        {showPermissionModal && (
+          <NotificationPermissionModal
+            onAllow={() => void doRequestPermission()}
+            onCancel={() => setShowPermissionModal(false)}
+          />
+        )}
+      </AnimatePresence>
 
       <RatePrompt />
       <BottomNav />
