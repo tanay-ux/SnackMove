@@ -23,6 +23,8 @@ interface AppState {
   settings: UserSettings | null;
   settingsId: number | null;
   hydrated: boolean;
+  /** Incremented when OS notification permission is granted or native prefs sync so reminders reschedule. */
+  nativeNotificationResyncSeq: number;
   setOnboardingComplete: (v: boolean) => void;
   setSettings: (s: UserSettings | null, id?: number | null) => void;
   loadSettings: () => Promise<void>;
@@ -30,6 +32,7 @@ interface AppState {
   completeOnboarding: (s: Partial<UserSettings>) => Promise<void>;
   hydrate: () => Promise<void>;
   resetData: () => Promise<void>;
+  bumpNativeNotificationResync: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -37,6 +40,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: null,
   settingsId: null,
   hydrated: false,
+  nativeNotificationResyncSeq: 0,
+
+  bumpNativeNotificationResync: () =>
+    set((s) => ({ nativeNotificationResyncSeq: s.nativeNotificationResyncSeq + 1 })),
 
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
   setSettings: (s, id) => set({ settings: s, settingsId: id ?? null }),

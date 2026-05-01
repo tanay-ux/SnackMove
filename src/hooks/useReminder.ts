@@ -8,6 +8,7 @@ const MAX_SNOOZES = 3;
 
 export function useReminder(onReminderFire: (title: string) => void) {
   const settings = useAppStore((s) => s.settings);
+  const nativeNotificationResyncSeq = useAppStore((s) => s.nativeNotificationResyncSeq);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snoozeCountRef = useRef(0);
   const snoozeUntilRef = useRef<number>(0);
@@ -73,7 +74,7 @@ export function useReminder(onReminderFire: (title: string) => void) {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [settings, schedule]);
+  }, [settings, nativeNotificationResyncSeq, schedule]);
 
   const snooze = useCallback(async (minutes: number) => {
     snoozeCountRef.current += 1;

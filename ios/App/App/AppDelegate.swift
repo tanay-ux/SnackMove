@@ -2,6 +2,47 @@ import UIKit
 import Capacitor
 import UserNotifications
 
+private let snackAlarmCategoryId = "SNACK_ALARM"
+private let pendingSnackStartKey = "SnackAlarmPendingStart"
+
+private func snackStartFromUserInfo(_ userInfo: [AnyHashable: Any]) -> Bool {
+    guard let v = userInfo["SNACK_START"] else { return false }
+    if let b = v as? Bool { return b }
+    if let n = v as? NSNumber { return n.boolValue }
+    return false
+}
+
+private func registerSnackAlarmCategory() {
+    let category = UNNotificationCategory(
+        identifier: snackAlarmCategoryId,
+        actions: [],
+        intentIdentifiers: [],
+        options: []
+    )
+    UNUserNotificationCenter.current().setNotificationCategories([category])
+}
+
+private func applySnackAlarmAttributes(_ content: UNMutableNotificationContent) {
+    content.categoryIdentifier = snackAlarmCategoryId
+    content.threadIdentifier = "snack-workout"
+    if #available(iOS 15.0, *) {
+        content.interruptionLevel = .timeSensitive
+        content.relevanceScore = 1.0
+    }
+}
+
+private func applySnackAlarmSound(_ content: UNMutableNotificationContent, vibrateOnly: Bool) {
+    if vibrateOnly {
+        content.sound = nil
+        return
+    }
+    if #available(iOS 17.0, *) {
+        content.sound = UNNotificationSound.ringtoneSoundNamed(UNNotificationSoundName("Alarm"))
+    } else {
+        content.sound = .default
+    }
+}
+
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
@@ -9,42 +50,31 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        registerSnackAlarmCategory()
         print("[SnackAlarm][iOS] App didFinishLaunching")
         return true
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
-        // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-        // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        // Called when the app was launched with a url. Feel free to add additional processing here,
-        // but if you want the App API to support tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        // Called when the app was launched with an activity, including Universal Links.
-        // Feel free to add additional processing here, but if you want the App API to support
-        // tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
@@ -58,11 +88,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        print("[SnackAlarm][iOS] didReceive notification response")
-        if let snackStart = response.notification.request.content.userInfo["SNACK_START"] as? Bool, snackStart {
-            SnackAlarmLaunchState.markLaunchedFromNotification()
-        }
-        completionHandler()
+        defer { completionHandler() }
+        print("[SnackAlarm][iOS] didReceive notification response action=\(response.actionIdentifier)")
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let userInfo = response.notification.request.content.userInfo
+        guard snackStartFromUserInfo(userInfo) else { return }
+        SnackAlarmLaunchState.markLaunchedFromNotification()
     }
 }
 
@@ -86,15 +117,20 @@ private enum SnackAlarmLaunchState {
     static func markLaunchedFromNotification() {
         lock.lock()
         launchedFromNotification = true
+        UserDefaults.standard.set(true, forKey: pendingSnackStartKey)
         lock.unlock()
     }
 
     static func consumeLaunchIntent() -> Bool {
         lock.lock()
-        let value = launchedFromNotification
+        let mem = launchedFromNotification
         launchedFromNotification = false
+        let persisted = UserDefaults.standard.bool(forKey: pendingSnackStartKey)
+        if persisted {
+            UserDefaults.standard.set(false, forKey: pendingSnackStartKey)
+        }
         lock.unlock()
-        return value
+        return mem || persisted
     }
 }
 
@@ -129,7 +165,11 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
             case .denied:
                 call.resolve(["notifications": "denied"])
             case .notDetermined:
-                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                var opts: UNAuthorizationOptions = [.alert, .sound, .badge]
+                if #available(iOS 15.0, *) {
+                    opts.insert(.timeSensitive)
+                }
+                self.center.requestAuthorization(options: opts) { granted, error in
                     if let error = error {
                         CAPLog.print("[SnackAlarm][iOS] requestAuthorization error: \(error.localizedDescription)")
                         call.reject("Failed to request notification permissions", nil, error)
@@ -191,14 +231,9 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
         content.title = title
         content.body = defaultBody
         let vibrateOnly = UserDefaults.standard.bool(forKey: vibrateOnlyKey)
-        if !vibrateOnly {
-            content.sound = .default
-        }
+        applySnackAlarmSound(content, vibrateOnly: vibrateOnly)
         content.userInfo = ["SNACK_START": true]
-
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        applySnackAlarmAttributes(content)
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
         let request = UNNotificationRequest(identifier: alarmNotificationID, content: content, trigger: trigger)
@@ -238,14 +273,9 @@ public class SnackAlarmPlugin: CAPPlugin, CAPBridgedPlugin {
         content.title = title
         content.body = defaultBody
         let vibrateOnly = UserDefaults.standard.bool(forKey: vibrateOnlyKey)
-        if !vibrateOnly {
-            content.sound = .default
-        }
+        applySnackAlarmSound(content, vibrateOnly: vibrateOnly)
         content.userInfo = ["SNACK_START": true]
-
-        if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
-        }
+        applySnackAlarmAttributes(content)
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(identifier: testNotificationID, content: content, trigger: trigger)

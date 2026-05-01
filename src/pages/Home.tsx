@@ -48,6 +48,7 @@ const fadeUp = {
 
 export default function Home() {
   const settings = useAppStore((s) => s.settings);
+  const bumpNativeNotificationResync = useAppStore((s) => s.bumpNativeNotificationResync);
   const { events, loadToday, logSnack } = useTodayStore();
   const [withinWindow, setWithinWindow] = useState(false);
   const [streak, setStreak] = useState(0);
@@ -96,16 +97,22 @@ export default function Home() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    const bootstrapNativeState = async () => {
+    let cancelled = false;
+    const openWorkoutFromLaunchIntent = async () => {
       const started = await checkNativeLaunchIntent();
       console.log('[Home] launch intent snackStart:', started);
-      if (started) {
-        setReminderTitle('Time to move!');
-        setReminderEntry('reminder');
-        setShowSnooze(true);
-      }
+      if (cancelled || !started) return;
+      setReminderTitle('Time to move!');
+      setReminderEntry('reminder');
+      setShowSnooze(true);
     };
-    void bootstrapNativeState();
+    // iOS may deliver the notification response after the first WebView tick; retry a few times.
+    const delays = [0, 120, 350, 700, 1400];
+    const timers = delays.map((ms) => window.setTimeout(() => void openWorkoutFromLaunchIntent(), ms));
+    return () => {
+      cancelled = true;
+      timers.forEach((id) => window.clearTimeout(id));
+    };
   }, []);
 
   useEffect(() => {
@@ -121,6 +128,7 @@ export default function Home() {
             reminderFrequencyMinutes: settings.reminderFrequencyMinutes,
             vibrateOnly: settings.vibrateOnly ?? false,
           });
+          bumpNativeNotificationResync();
         }
         return granted;
       });
@@ -220,6 +228,7 @@ export default function Home() {
           reminderFrequencyMinutes: settings.reminderFrequencyMinutes,
           vibrateOnly: settings.vibrateOnly ?? false,
         });
+        bumpNativeNotificationResync();
       }
       return;
     }

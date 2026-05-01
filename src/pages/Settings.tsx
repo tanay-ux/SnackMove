@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import BottomNav from '../components/BottomNav';
@@ -90,6 +90,7 @@ const STYLE_ICONS: Record<SnackStyle, { bg: string; icon: React.ReactNode }> = {
 export default function Settings() {
   const settings = useAppStore((s) => s.settings);
   const saveSettingsAsync = useAppStore((s) => s.saveSettingsAsync);
+  const bumpNativeNotificationResync = useAppStore((s) => s.bumpNativeNotificationResync);
   const resetData = useAppStore((s) => s.resetData);
   const setOnboardingComplete = useAppStore((s) => s.setOnboardingComplete);
   const setSettings = useAppStore((s) => s.setSettings);
@@ -152,6 +153,18 @@ export default function Settings() {
     });
   }, [settings]);
 
+  const prevOsPermissionRef = useRef<PermissionStatus | null>(null);
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    const prev = prevOsPermissionRef.current;
+    prevOsPermissionRef.current = osPermission;
+    if (prev === null) return;
+    if (prev !== 'granted' && osPermission === 'granted' && notificationsEnabled) {
+      syncSettingsToNative();
+      bumpNativeNotificationResync();
+    }
+  }, [osPermission, notificationsEnabled, syncSettingsToNative, bumpNativeNotificationResync]);
+
   const handleRequestPermission = async () => {
     setShowPermissionModal(false);
     if (isNativePlatform()) {
@@ -162,6 +175,7 @@ export default function Settings() {
         setNotificationsEnabled(true);
         update({ notificationsEnabled: true });
         syncSettingsToNative();
+        bumpNativeNotificationResync();
       }
     } else {
       const granted = await requestNotificationPermission();
